@@ -41,7 +41,12 @@ sample.safe <- function(x, ...){
 
 mutate_plex_list <- function(plex_list_obj, prob_split=0.5, prob_merge=0.5, prob_move=0.5, min_plex_size=2, max_plex_size=12){
   plex_list <- plex_list_obj$pl
-  #message('Mut')
+  # message('Mut')
+  # message('prob_split: ', prob_split)
+  # message('prob_merge: ', prob_merge)
+  # message('prob_move: ', prob_move)
+  # message('min_plex_size: ', min_plex_size)
+  # message('max_plex_size: ', max_plex_size)
   rnames_start <- sort(rownames(do.call(rbind, plex_list)))
   n_list = length(plex_list)
   plex_sizes <- sapply(plex_list, nrow)
@@ -106,7 +111,7 @@ mutate_plex_list <- function(plex_list_obj, prob_split=0.5, prob_merge=0.5, prob
   }
   rnames_end <- sort(rownames(do.call(rbind, plex_list)))
   stopifnot(all(rnames_start==rnames_end))
-  return(create_PlexList(plex_list))
+  return(PlexList(plex_list))
 }
 
 split_plex <- function(plex_split){
@@ -121,7 +126,7 @@ split_plex <- function(plex_split){
   return(plex_list)
 }
 
-create_random_split_plexlist <- function(proto_plexlist_obj, min_plex_size=2, max_plex_size=12, try_limit=10000){
+create_random_split_plexlist <- function(proto_plexlist_obj, min_plex_size, max_plex_size, try_limit=10000){
   proto_plexlist <- proto_plexlist_obj$pl
   single_plex <- do.call(rbind, proto_plexlist)
   n_plex <- nrow(single_plex)
@@ -144,24 +149,25 @@ create_random_split_plexlist <- function(proto_plexlist_obj, min_plex_size=2, ma
   plex_splits <- plex_splits[plex_splits>0]
   new_plex_list <- split.data.frame(single_plex, rep(1:length(plex_splits), plex_splits))
   names(new_plex_list) <- NULL
-  return(create_PlexList(new_plex_list))
+  return(PlexList(new_plex_list))
 }
 
-bootstrap_population <- function(plex_list_obj, pop_size, min_plex_size=2, max_plex_size=12){
+bootstrap_population <- function(plex_list_obj, pop_size, min_plex_size, max_plex_size){
   pop <- list()
   #pop[[1]] <- mutate_plex_list(list(do.call(rbind, plex_list)), min_plex_size=min_plex_size)
-  pop[[1]] <- create_random_split_plexlist(plex_list_obj, min_plex_size=2, max_plex_size=12)
+  pop[[1]] <- create_random_split_plexlist(plex_list_obj, min_plex_size, max_plex_size)
   for(i in 2:pop_size){
     prob_split <- ((2*pop_size)-i)/(2*pop_size)
-    pop[[i]] <- mutate_plex_list(pop[[i-1]], prob_split = prob_split, prob_merge = 1-prob_split, min_plex_size=min_plex_size)
+    pop[[i]] <- mutate_plex_list(pop[[i-1]], prob_split = prob_split, prob_merge = 1-prob_split, 
+                                 min_plex_size=min_plex_size, max_plex_size=max_plex_size)
   }
   return(pop)
 }
 
-evolve_plex_list <- function(plex_list_obj, n_iter=10, n_gen=100, pop_size=100, death_rate=0.1, ...){
+evolve_plex_list <- function(plex_list_obj, n_iter=10, n_gen=100, pop_size=100, death_rate=0.1, min_plex_size=2, max_plex_size=12, ...){
   winners <- lapply(1:n_iter, function(iter){
     #plex_list_pop <- c(list(plex_list), lapply(1:(pop_size-1), function(x) mutate_plex_list(plex_list, ...)))
-    plex_list_pop <- bootstrap_population(plex_list_obj, pop_size)
+    plex_list_pop <- bootstrap_population(plex_list_obj, pop_size, min_plex_size=min_plex_size, max_plex_size=max_plex_size)
     for(gen in 1:n_gen){
       plex_list_scores <- sapply(plex_list_pop, score_plex_list)
       message(sprintf('Iter %s, gen %s, max.score = %s', iter, gen, max(plex_list_scores)))
@@ -170,7 +176,7 @@ evolve_plex_list <- function(plex_list_obj, n_iter=10, n_gen=100, pop_size=100, 
       n_death <- length(death_idxs)
       prolif_sel <- sample.safe(which(!death_sel), n_death, replace=F)
       prolif_survivors <- plex_list_pop[prolif_sel]
-      new_pop <- lapply(prolif_survivors, mutate_plex_list, ...)
+      new_pop <- lapply(prolif_survivors, mutate_plex_list, min_plex_size=min_plex_size, max_plex_size=max_plex_size, ...)
       plex_list_pop <- c(plex_list_pop[!death_sel], new_pop)
     }
     iter_plex_list_scores <- sapply(plex_list_pop, score_plex_list)
@@ -188,6 +194,36 @@ name_sort_plex_list <- function(plex_list_obj){
   return(plex_list_obj)
 }
 
+reduce_to_plex <- function(plexlike){
+  reduced <- NULL
+  if(class(plexlike)=='PlexList'){
+    reduced <- do.call(rbind, plexlike$pl)
+  }else if(class(plexlike)=='list'){
+    reduced <- do.call(rbind, plexlike)
+  } else {
+    reduced <- plexlike
+  }
+  return(reduced)
+}
+
+find_plex_friends <- function(target_plex, pool_plex, n_friends, max_tests=100000){
+  target_plex <- reduce_to_plex(target_plex)
+  pool_plex <- reduce_to_plex(pool_plex)
+  n_tests <- choose(nrow(pool_plex), n_friends)
+  if(n_tests <= max_tests){
+    pool_plex_combs <- combn(nrow(pool_plex), n_friends, simplify=F, FUN=function(test_friends){
+      pool_plex[test_friends,,drop=F]
+    })
+    extended_target_plex <- lapply(pool_plex_combs, function(pool_plex_select){
+      rbind(target_plex, pool_plex_select)
+    })
+    scores <- sapply(extended_target_plex, score_plex)
+    max.score <- max(scores)
+    list(friends=pool_plex_combs[scores==max.score], plexes=extended_target_plex[scores==max.score], score=max.score)
+  } else {
+    stop(sprintf('Number required tests (N=%s) exeeds max_tests=%s', n_tests, max_tests))
+  }
+}
 
 read_plex_list <- function(filename){
   file_str <- readChar(filename, file.info(filename)$size)
@@ -204,11 +240,7 @@ read_plex_list <- function(filename){
     names(plex_struct) <- sapply(strsplit(plex_lines, '\\s+'), function(x) x[1])
     return(do.call(rbind, plex_struct))
   })
-  return(create_PlexList(plex_list))
-}
-
-create_PlexList <- function(pl){
-  return(structure(list(pl=pl), class='PlexList'))
+  return(PlexList(plex_list))
 }
 
 write_plex_list <- function(plex_list_obj, filename){
@@ -231,6 +263,10 @@ write_plex_list <- function(plex_list_obj, filename){
   text<-paste(line_buffer, collapse="\n")
   writeLines(text, file_con, sep='')
   close(file_con)
+}
+
+PlexList <- function(pl){
+  return(structure(list(pl=pl), class='PlexList'))
 }
 
 print.PlexList <- function(plex_list_obj){
