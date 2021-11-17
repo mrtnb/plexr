@@ -17,13 +17,12 @@ channel_A_freq <- function(plex, ...){
   apply(channel_AB_counts(plex, ...), MARGIN=2, function(x) x['A']/sum(x))
 }
 
-
 score_plex_list <- function(plex_list_obj, ...){
   plex_list <- plex_list_obj$pl
   s<-sum(sapply(plex_list, score_plex))
-  if(is.nan(s)){
-    plex_list_summary(plex_list)
-    stop()
+  if(is.na(s)){
+    print.PlexList(plex_list)
+    stop("NA score for plex list")
   }
   return(s)
   #return(weighted.mean(x=sapply(plex_list, score_plex), w=sapply(plex_list, length)))
@@ -50,15 +49,12 @@ mutate_plex_list <- function(plex_list_obj, prob_split=0.5, prob_merge=0.5, prob
   rnames_start <- sort(rownames(do.call(rbind, plex_list)))
   n_list = length(plex_list)
   plex_sizes <- sapply(plex_list, nrow)
-  
-  if(runif(1)<prob_split & any(plex_sizes>min_plex_size)){
+  if(runif(1)<prob_split & any(plex_sizes>=(2*min_plex_size))){
     #message('Split')
-    # TODO plex_sizes > 2*min_plex_size ?
-    split_idx <- sample.safe(which(plex_sizes>min_plex_size), 1)
+    split_idx <- sample.safe(which(plex_sizes>=(2*min_plex_size)), 1)
     plex_split <- plex_list[[split_idx]]
     stopifnot(nrow(plex_split)>min_plex_size)
-    # TODO split_plex() does not obey min split size.....
-    plex_list <- c(plex_list[-split_idx], split_plex(plex_split))
+    plex_list <- c(plex_list[-split_idx], split_plex(plex_split, min_plex_size))
     n_list = length(plex_list)
     plex_sizes <- sapply(plex_list, nrow)  
   }
@@ -114,11 +110,13 @@ mutate_plex_list <- function(plex_list_obj, prob_split=0.5, prob_merge=0.5, prob
   return(PlexList(plex_list))
 }
 
-split_plex <- function(plex_split){
+split_plex <- function(plex_split, min_plex_size){
   plex_split_n <- nrow(plex_split)
-  stopifnot(plex_split_n>1)
+  stopifnot(plex_split_n>=(2*min_plex_size))
   rnd_split <- rep(T,plex_split_n)
-  while(sum(rnd_split)==length(rnd_split) || sum(!rnd_split)==length(rnd_split)){
+  while(sum(rnd_split)==length(rnd_split) || 
+        sum(!rnd_split)==length(rnd_split) || 
+        sum(rnd_split) < min_plex_size){
     rnd_split <- sample(c(T,F), plex_split_n, replace=T)
   }
   plex_list <- c(list(plex_split[rnd_split,,drop=FALSE]), 
@@ -134,6 +132,11 @@ create_random_split_plexlist <- function(proto_plexlist_obj, min_plex_size, max_
   while(sum(plex_splits) != n_plex){
     next_split <- sample.safe(min_plex_size:max_plex_size, 1)
     this_try <- 1
+    # TODO: Case in which this code did not find solution:
+    # plex_splits: c(0,5,4,4)
+    # n_plex: 20
+    # min_plex_size: 4
+    # max_plex_size: 6
     while(this_try <= try_limit && sum(plex_splits) + next_split != n_plex && 
           (sum(plex_splits) + next_split > n_plex || sum(plex_splits) + next_split > n_plex - min_plex_size)){
       next_split <- sample.safe(min_plex_size:max_plex_size, 1)
@@ -269,14 +272,14 @@ PlexList <- function(pl){
   return(structure(list(pl=pl), class='PlexList'))
 }
 
-print.PlexList <- function(plex_list_obj){
-  plex_list <- plex_list_obj$pl
+print.PlexList <- function(x, ...){
+  plex_list <- x$pl
   n_plex <- length(plex_list)
   cat(sprintf('List of %s plexes', n_plex), '\n')
   for(i in 1:n_plex){
     plex <- plex_list[[i]]
     cat(sprintf('%s. / %s-plex', i, nrow(plex)), '\n')
-    print(plex)
+    print(plex, ...)
     channel_counts_str <- paste(sapply(apply(channel_AB_counts(plex), 2, paste, collapse=','), 
                                        function(x) sprintf('(%s)', x)), collapse=' ')
     cat('-> Channel A/B counts :', channel_counts_str, '\n')
@@ -284,7 +287,7 @@ print.PlexList <- function(plex_list_obj){
     cat('-> Score         :', score_plex(plex), '\n')
     cat('\n')
   }
-  cat('=> Overall score of plex list:', score_plex_list(plex_list_obj), '\n')
+  cat('=> Overall score of plex list:', score_plex_list(x), '\n')
 }
 
 # test_plex1 <- matrix(c('A','C','G',

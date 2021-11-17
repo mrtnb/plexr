@@ -1,0 +1,3 @@
+S3method(print, PlexList)
+importFrom("stats", "runif")
+importFrom("utils", "combn")
