@@ -124,40 +124,48 @@ split_plex <- function(plex_split, min_plex_size){
   return(plex_list)
 }
 
-create_random_split_plexlist <- function(proto_plexlist_obj, min_plex_size, max_plex_size, try_limit=10000){
+
+decomp_sum <- function(x, elem, max_draws=100000){
+  dcomp <- decomp_sum_(x, elem, max_draws)
+  res <- dcomp$z
+  if(length(res) < 2 && is.na(res)){
+    stop(sprintf('Unable to decompose %s by elements %s. Reached %s draws.', x, paste(elem, collapse=','), max_draws))
+  }
+  return(res)
+}
+
+decomp_sum_ <- function(x, elem, max_draws){
+  elem <- elem[elem<=x]
+  z <- as.numeric(NA)
+  while(length(elem)>0 && max_draws > 0 && is.na(z)){
+    k <- sample.safe(elem, 1)
+    max_draws <- max_draws-1
+    if(k==x){
+      z <- k
+    } else {
+      dpart <- decomp_sum_(x-k, elem, max_draws)
+      max_draws <- dpart$max_draws
+      if(!is.na(dpart$z) && sum(dpart$z) + k == x){
+        z <- c(k, dpart$z)
+      }
+    }
+  }
+  return(list(z=z, max_draws=max_draws))
+}
+
+create_random_split_plexlist <- function(proto_plexlist_obj, min_plex_size, max_plex_size, max_draws=10000){
   proto_plexlist <- proto_plexlist_obj$pl
   single_plex <- do.call(rbind, proto_plexlist)
   n_plex <- nrow(single_plex)
-  plex_splits <- c(0)
-  while(sum(plex_splits) != n_plex){
-    next_split <- sample.safe(min_plex_size:max_plex_size, 1)
-    this_try <- 1
-    # TODO: Case in which this code did not find solution:
-    # plex_splits: c(0,5,4,4)
-    # n_plex: 20
-    # min_plex_size: 4
-    # max_plex_size: 6
-    while(this_try <= try_limit && sum(plex_splits) + next_split != n_plex && 
-          (sum(plex_splits) + next_split > n_plex || sum(plex_splits) + next_split > n_plex - min_plex_size)){
-      next_split <- sample.safe(min_plex_size:max_plex_size, 1)
-      this_try<-this_try+1
-    }
-    if(this_try >= try_limit){
-      stop('Failed creating plex list. Exeeded ', try_limit, 
-           ' iterations. min_plex_size=', min_plex_size, ' max_plex_size=', 
-           max_plex_size, ' n_plex=', n_plex, ' plex_splits=', paste(plex_splits, collapse=','))
-    }
-    plex_splits <- c(plex_splits, next_split)
-  }
-  plex_splits <- plex_splits[plex_splits>0]
+  plex_splits <- decomp_sum(n_plex, min_plex_size:max_plex_size, max_draws)
   new_plex_list <- split.data.frame(single_plex, rep(1:length(plex_splits), plex_splits))
   names(new_plex_list) <- NULL
   return(PlexList(new_plex_list))
 }
 
+
 bootstrap_population <- function(plex_list_obj, pop_size, min_plex_size, max_plex_size){
   pop <- list()
-  #pop[[1]] <- mutate_plex_list(list(do.call(rbind, plex_list)), min_plex_size=min_plex_size)
   pop[[1]] <- create_random_split_plexlist(plex_list_obj, min_plex_size, max_plex_size)
   for(i in 2:pop_size){
     prob_split <- ((2*pop_size)-i)/(2*pop_size)
