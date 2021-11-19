@@ -1,11 +1,13 @@
 
 imbalance_penalty_function1 <- function(x) exp(7*(x^4)) + (20*x) -1
 
+#' @export
 score_plex <- function(plex, ...){
   norm_imbalance <- abs(channel_A_freq(plex, ...) - 0.5) / 0.5
   return(-1 * sum(imbalance_penalty_function1(norm_imbalance)))
 }
 
+#' @export
 channel_AB_counts <- function(plex, channel_A=c('A','C'), channel_B=c('G', 'T')){
   apply(plex, MARGIN=2, function(cycle){
     channel_bias <- c('A'=sum(cycle %in% channel_A), 'B'=sum(cycle %in% channel_B))
@@ -13,10 +15,12 @@ channel_AB_counts <- function(plex, channel_A=c('A','C'), channel_B=c('G', 'T'))
   })
 }
 
+#' @export
 channel_A_freq <- function(plex, ...){
   apply(channel_AB_counts(plex, ...), MARGIN=2, function(x) x['A']/sum(x))
 }
 
+#' @export
 score_plex_list <- function(plex_list_obj, ...){
   plex_list <- plex_list_obj$pl
   s<-sum(sapply(plex_list, score_plex))
@@ -38,6 +42,7 @@ sample.safe <- function(x, ...){
   return(ret)
 }
 
+#' @importFrom stats runif
 mutate_plex_list <- function(plex_list_obj, prob_split=0.5, prob_merge=0.5, prob_move=0.5, min_plex_size=2, max_plex_size=12){
   plex_list <- plex_list_obj$pl
   # message('Mut')
@@ -175,6 +180,7 @@ bootstrap_population <- function(plex_list_obj, pop_size, min_plex_size, max_ple
   return(pop)
 }
 
+#' @export
 evolve_plex_list <- function(plex_list_obj, n_iter=10, n_gen=100, pop_size=100, death_rate=0.1, min_plex_size=2, max_plex_size=12, ...){
   winners <- lapply(1:n_iter, function(iter){
     #plex_list_pop <- c(list(plex_list), lapply(1:(pop_size-1), function(x) mutate_plex_list(plex_list, ...)))
@@ -217,6 +223,8 @@ reduce_to_plex <- function(plexlike){
   return(reduced)
 }
 
+#' @importFrom utils combn
+#' @export
 find_plex_friends <- function(target_plex, pool_plex, n_friends, max_tests=100000){
   target_plex <- reduce_to_plex(target_plex)
   pool_plex <- reduce_to_plex(pool_plex)
@@ -236,6 +244,7 @@ find_plex_friends <- function(target_plex, pool_plex, n_friends, max_tests=10000
   }
 }
 
+#' @export
 read_plex_list <- function(filename){
   file_str <- readChar(filename, file.info(filename)$size)
   plexes_str_list <- strsplit(file_str,"\n\n")[[1]]
@@ -254,6 +263,7 @@ read_plex_list <- function(filename){
   return(PlexList(plex_list))
 }
 
+#' @export
 write_plex_list <- function(plex_list_obj, filename){
   plex_list <- plex_list_obj$pl
   file_con <- file(filename)
@@ -276,10 +286,12 @@ write_plex_list <- function(plex_list_obj, filename){
   close(file_con)
 }
 
+#' @export
 PlexList <- function(pl){
   return(structure(list(pl=pl), class='PlexList'))
 }
 
+#' @export
 print.PlexList <- function(x, ...){
   plex_list <- x$pl
   n_plex <- length(plex_list)
